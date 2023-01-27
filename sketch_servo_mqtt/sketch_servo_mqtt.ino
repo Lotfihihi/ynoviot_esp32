@@ -1,19 +1,21 @@
 #include "EspMQTTClient.h"
 #include <ESP32Servo.h>
+#include <ArduinoJson.h>
 
 const int SERVO_2_PIN = 32;
 const int SERVO_1_PIN = 33;
-const int SERVO_50_PIN = 2;
-const int SERVO_20_PIN = 4;
-const int SERVO_10_PIN = 5;
+const int SERVO_50_PIN = 25;
+const int SERVO_20_PIN = 12;
+const int SERVO_10_PIN = 13;
 
-const int IR_SENSOR_2_PIN = 26;
+const int IR_SENSOR_2_PIN = 13;
 const int IR_SENSOR_1_PIN = 27;
 const int IR_SENSOR_50_PIN = 12;
 const int IR_SENSOR_20_PIN = 16;
-const int IR_SENSOR_10_PIN = 14;
+const int IR_SENSOR_10_PIN = 18;
 
-const int DEBOUNCE_TIMER = 50;
+const int DEBOUNCE_TIMER = 150;
+const int NB_TYPE_PIECES = 5;
 
 Servo servo2;
 Servo servo1;
@@ -84,6 +86,7 @@ EspMQTTClient client(
 void setup() {
   Serial.begin(115200);
   client.enableMQTTPersistence();
+  client.setMaxPacketSize(1024);
 
   // Initialisation des pins des servos moteurs
   ESP32PWM::allocateTimer(0);
@@ -118,18 +121,45 @@ void setup() {
 }
 
 void onConnectionEstablished() {
-
   client.subscribe("esp32lotfihihi", [] (const String &payload)  {
-    Serial.println(payload);
-    if(payload == "1") {
-      turnServo2();
-      totalSum -= 1;
-    }
-    if(payload == "2") {
-      turnServo1();
-      totalSum -= 2;
-    }
+    StaticJsonDocument<1024> doc;
+    int number = 0;
+    double type = 0.0;
+    int length = 0;
     
+    DeserializationError error = deserializeJson(doc, payload);
+    if(error == NULL && doc["esp32"] != NULL) {
+      if(doc["esp32"]["action"] == "requestWithdraw") {
+        for(int i = 0; i < NB_TYPE_PIECES; i++) {
+          number = doc["esp32"]["coins"][i]["number"];
+          type = doc["esp32"]["coins"][i]["type"];
+
+          for(int j = 0; j < number; j++) {
+            Serial.println(type);
+            if(type == 2) {
+              Serial.println("-2€");
+              turnServo2();
+            } else if(type == 1) {
+              Serial.println("-1€");
+              turnServo1();
+            } else if(type == 0.50) {
+              Serial.println("-0.50€");
+              turnServo50();
+            } else if(type == 0.20) {
+              Serial.println("-0.20€");
+              turnServo20();
+            } else if(type == 0.10) {
+              Serial.println("-0.10€");
+              turnServo10();
+            }
+          }
+        }
+      } else {
+        Serial.println("Parsing error");
+      }
+    } else {
+      Serial.println(error.f_str());
+    }
   });
 
   client.publish("esp32lotfihihi", "ESP32 Connected to MQTT");
@@ -142,6 +172,7 @@ void turnServo2() {
 		servo2.write(posServo2);
 		delay(15);
 	}
+  totalSum -= 2;
 }
 
 void turnServo1() {
@@ -151,6 +182,7 @@ void turnServo1() {
 		servo1.write(posServo1);
 		delay(15);
 	}
+  totalSum -= 1;
 }
 
 void turnServo50() {
@@ -160,6 +192,7 @@ void turnServo50() {
 		servo50.write(posServo50);
 		delay(15);
 	}
+  totalSum -= 0.50;
 }
 
 void turnServo20() {
@@ -169,6 +202,7 @@ void turnServo20() {
 		servo20.write(posServo20);
 		delay(15);
 	}
+  totalSum -= 0.20;
 }
 
 void turnServo10() {
@@ -178,23 +212,24 @@ void turnServo10() {
 		servo10.write(posServo10);
 		delay(15);
 	}
+  totalSum -= 0.10;
 }
 
 void loop() {
   now = millis();
   client.loop();
 
-  if(is1Detected == true) {
-    if(startTimer == true && (now - lastTrigger) > DEBOUNCE_TIMER) {
-      addToSum(1);
-      is1Detected = false;
-      startTimer = false;
-    }
-  }
   if(is2Detected == true) {
     if(startTimer == true && (now - lastTrigger) > DEBOUNCE_TIMER) {
       addToSum(2);
       is2Detected = false;
+      startTimer = false;
+    }
+  }
+  if(is1Detected == true) {
+    if(startTimer == true && (now - lastTrigger) > DEBOUNCE_TIMER) {
+      addToSum(1);
+      is1Detected = false;
       startTimer = false;
     }
   }
