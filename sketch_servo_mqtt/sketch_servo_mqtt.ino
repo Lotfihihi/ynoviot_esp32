@@ -2,17 +2,25 @@
 #include <ESP32Servo.h>
 #include <ArduinoJson.h>
 
+// PINS de SERVOS
 const int SERVO_2_PIN = 32;
 const int SERVO_1_PIN = 33;
 const int SERVO_50_PIN = 25;
 const int SERVO_20_PIN = 12;
 const int SERVO_10_PIN = 13;
 
+// PINS DE CAPTEURS
 const int IR_SENSOR_2_PIN = 13;
 const int IR_SENSOR_1_PIN = 27;
 const int IR_SENSOR_50_PIN = 12;
 const int IR_SENSOR_20_PIN = 16;
 const int IR_SENSOR_10_PIN = 18;
+
+// WIFI et MQTT
+const int SSID = "Galaxy Z Flip3";
+const int MDP = "lotfihihi";
+const int BROKER = "broker.emqx.io";
+const int TOPIC = "esp32lotfihihi";
 
 const int DEBOUNCE_TIMER = 150;
 const int NB_TYPE_PIECES = 5;
@@ -41,42 +49,46 @@ boolean startTimer = false;
 
 float totalSum = 0;
 
+// Fonction courte qui indique qu'une pièce de 2 euros à été détectée
 void IRAM_ATTR triggeredSensor2() {
   is2Detected = true;
   lastTrigger = millis();
   startTimer = true;
 }
 
+// Fonction courte qui indique qu'une pièce de 1 euros à été détectée
 void IRAM_ATTR triggeredSensor1() {
   is1Detected = true;
   lastTrigger = millis();
   startTimer = true;
 }
 
+// Fonction courte qui indique qu'une pièce de 50 centimes à été détectée
 void IRAM_ATTR triggeredSensor50() {
   is50Detected = true;
   lastTrigger = millis();
   startTimer = true;
 }
 
+// Fonction courte qui indique qu'une pièce de 20 centimes à été détectée
 void IRAM_ATTR triggeredSensor20() {
   is20Detected = true;
   lastTrigger = millis();
   startTimer = true;
 }
 
+// Fonction courte qui indique qu'une pièce de 10 centimes à été détectée
 void IRAM_ATTR triggeredSensor10() {
   is10Detected = true;
   lastTrigger = millis();
   startTimer = true;
 }
 
-
 // Initialisation de la connexion Wi-Fi/MQTT
 EspMQTTClient client(
-  "Galaxy Z Flip3", // SSID
-  "lotfihihi", // Password
-  "broker.emqx.io",  // MQTT Broker server ip
+  SSID, // SSID
+  MDP, // Password
+  BROKER,  // MQTT Broker server ip
   "",   // Can be omitted if not needed
   "",   // Can be omitted if not needed
   "MQTTESP32Lotfihihi"      // Client name that uniquely identify your device
@@ -120,8 +132,9 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(IR_SENSOR_10_PIN), triggeredSensor10, FALLING);
 }
 
+// Envoie des messages sur MQTT que si la connexion au Wi-Fi est active (la fonction est appelée dans la librairie ESPMQTTClient, c'est normal qu'il n y ait pas d'appel dans le code)
 void onConnectionEstablished() {
-  client.subscribe("esp32lotfihihi", [] (const String &payload)  {
+  client.subscribe(TOPIC, [] (const String &payload)  {
     StaticJsonDocument<1024> doc;
     int number = 0;
     double type = 0.0;
@@ -137,19 +150,14 @@ void onConnectionEstablished() {
           for(int j = 0; j < number; j++) {
             Serial.println(type);
             if(type == 2) {
-              Serial.println("-2€");
               turnServo2();
             } else if(type == 1) {
-              Serial.println("-1€");
               turnServo1();
             } else if(type == 0.50) {
-              Serial.println("-0.50€");
               turnServo50();
             } else if(type == 0.20) {
-              Serial.println("-0.20€");
               turnServo20();
             } else if(type == 0.10) {
-              Serial.println("-0.10€");
               turnServo10();
             }
           }
@@ -162,9 +170,10 @@ void onConnectionEstablished() {
     }
   });
 
-  client.publish("esp32lotfihihi", "ESP32 Connected to MQTT");
+  client.publish(TOPIC, "ESP32 Connected to MQTT");
 }
 
+// Fonction qui fait tourner le servo correspondant aux pièces de 2 Euros
 void turnServo2() {
 	servo2.write(180);
   delay(15);
@@ -173,8 +182,10 @@ void turnServo2() {
 		delay(15);
 	}
   totalSum -= 2;
+  withdrawResponse();
 }
 
+// Fonction qui fait tourner le servo correspondant aux pièces de 1 Euro
 void turnServo1() {
 	servo1.write(180);
   delay(15);
@@ -183,8 +194,10 @@ void turnServo1() {
 		delay(15);
 	}
   totalSum -= 1;
+  withdrawResponse();
 }
 
+// Fonction qui fait tourner le servo correspondant aux pièces de 50 centimes
 void turnServo50() {
 	servo50.write(180);
   delay(15);
@@ -193,8 +206,10 @@ void turnServo50() {
 		delay(15);
 	}
   totalSum -= 0.50;
+  withdrawResponse();
 }
 
+// Fonction qui fait tourner le servo correspondant aux pièces de 20 centimes
 void turnServo20() {
 	servo20.write(180);
   delay(15);
@@ -203,8 +218,10 @@ void turnServo20() {
 		delay(15);
 	}
   totalSum -= 0.20;
+  withdrawResponse();
 }
 
+// Fonction qui fait tourner le servo correspondant aux pièces de 10 centimes
 void turnServo10() {
 	servo10.write(180);
   delay(15);
@@ -213,50 +230,77 @@ void turnServo10() {
 		delay(15);
 	}
   totalSum -= 0.10;
+  withdrawResponse();
 }
 
+// Boucle principale
 void loop() {
   now = millis();
   client.loop();
 
   if(is2Detected == true) {
     if(startTimer == true && (now - lastTrigger) > DEBOUNCE_TIMER) {
-      addToSum(2);
+      moneyAdded(2);
       is2Detected = false;
       startTimer = false;
     }
   }
   if(is1Detected == true) {
     if(startTimer == true && (now - lastTrigger) > DEBOUNCE_TIMER) {
-      addToSum(1);
+      moneyAdded(1);
       is1Detected = false;
       startTimer = false;
     }
   }
   if(is50Detected == true) {
     if(startTimer == true && (now - lastTrigger) > DEBOUNCE_TIMER) {
-      addToSum(0.50);
+      moneyAdded(0.50);
       is1Detected = false;
       startTimer = false;
     }
   }
   if(is20Detected == true) {
     if(startTimer == true && (now - lastTrigger) > DEBOUNCE_TIMER) {
-      addToSum(0.20);
+      moneyAdded(0.20);
       is1Detected = false;
       startTimer = false;
     }
   }
   if(is10Detected == true) {
     if(startTimer == true && (now - lastTrigger) > DEBOUNCE_TIMER) {
-      addToSum(0.10);
+      moneyAdded(0.10);
       is1Detected = false;
       startTimer = false;
     }
   }
 }
 
-void addToSum(float value) {
+// Fonction qui envoie un JSON sur MQTT correspondant à la pièce detectée
+void moneyAdded(float value) {
   totalSum += value;
-  client.publish("esp32lotfihihi", String(totalSum));
+  client.publish(TOPIC, 
+    "{
+      \"server\":{
+        \"action":\"addMoney\",
+        \"date\":\"timestamp\",
+        \"coins\":[
+          {
+            \"type\":value,
+            \"number\":1
+          }
+        ]
+      }
+    }"
+  });
+}
+
+void withdrawResponse() {
+  client.publish(TOPIC, 
+    "{
+      \"server\": {
+        \"action\":\"answerWithdraw\",
+        \"status\":\"true\q"
+      }
+    }"
+  });
 }
